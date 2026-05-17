@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel de Ligacoes - WaSeller / API4COM</title>
+  <style>
+    :root {
+      --verde: #1f8a5b;
+      --verde-claro: #e7f5ee;
+      --cinza: #6b7280;
+      --cinza-claro: #f3f4f6;
+      --borda: #e5e7eb;
+      --texto: #1f2937;
+      --azul: #2563eb;
+      --amarelo: #b45309;
+      --vermelho: #b91c1c;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #fafafa;
+      color: var(--texto);
+      padding: 24px 16px 60px;
+    }
+    .container { max-width: 980px; margin: 0 auto; }
+    header { margin-bottom: 20px; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .sub { color: var(--cinza); font-size: 14px; }
+    .barra {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px; margin: 18px 0 14px;
+    }
+    .resumo { font-size: 14px; color: var(--cinza); }
+    .btn {
+      border: none; border-radius: 8px; padding: 9px 16px; font-size: 14px;
+      font-weight: 600; cursor: pointer; transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-verde { background: var(--verde); color: #fff; }
+    .btn-claro { background: var(--cinza-claro); color: var(--texto); }
+    table { width: 100%; border-collapse: collapse; background: #fff;
+      border: 1px solid var(--borda); border-radius: 10px; overflow: hidden; }
+    th, td { text-align: left; padding: 12px 14px; font-size: 14px;
+      border-bottom: 1px solid var(--borda); vertical-align: middle; }
+    th { background: var(--cinza-claro); font-size: 12px; text-transform: uppercase;
+      letter-spacing: .03em; color: var(--cinza); }
+    tr:last-child td { border-bottom: none; }
+    .nome { font-weight: 600; }
+    .numero { color: var(--cinza); font-size: 13px; }
+    .badge {
+      display: inline-block; padding: 3px 9px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+    }
+    .b-novo { background: #eef2ff; color: var(--azul); }
+    .b-ligando { background: #fef3c7; color: var(--amarelo); }
+    .b-atendida { background: var(--verde-claro); color: var(--verde); }
+    .b-nao_atendida { background: #fee2e2; color: var(--vermelho); }
+    .detalhe { font-size: 12px; color: var(--cinza); margin-top: 3px; }
+    .detalhe a { color: var(--azul); }
+    .vazio { text-align: center; padding: 50px 20px; color: var(--cinza); }
+    .rodape { margin-top: 16px; font-size: 12px; color: var(--cinza); text-align: center; }
+    .erro { background: #fee2e2; color: var(--vermelho); padding: 10px 14px;
+      border-radius: 8px; font-size: 14px; margin-bottom: 14px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Painel de Ligacoes</h1>
+      <div class="sub">Leads que chegaram pelo WaSeller. Clique em "Ligar" para chamar pela API4COM &mdash; sem digitar numero.</div>
+    </header>
+
+    <div id="erro" class="erro"></div>
+
+    <div class="barra">
+      <div class="resumo" id="resumo">Carregando...</div>
+      <button class="btn btn-claro" onclick="carregar()">Atualizar agora</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Lead</th>
+          <th>Status</th>
+          <th>Recebido em</th>
+          <th style="text-align:right;">Acao</th>
+        </tr>
+      </thead>
+      <tbody id="lista">
+        <tr><td colspan="4" class="vazio">Carregando leads...</td></tr>
+      </tbody>
+    </table>
+
+    <div class="rodape">A lista atualiza sozinha a cada 20 segundos.</div>
+  </div>
+
+  <script>
+    var STATUS_LABEL = {
+      novo: "Novo",
+      ligando: "Ligando...",
+      atendida: "Atendida",
+      nao_atendida: "Nao atendida"
+    };
+
+    function escapar(t) {
+      return String(t == null ? "" : t)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function formatarData(iso) {
+      if (!iso) return "-";
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return "-";
+      return d.toLocaleString("pt-BR");
+    }
+
+    function mostrarErro(msg) {
+      var el = document.getElementById("erro");
+      if (!msg) { el.style.display = "none"; return; }
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function linhaDetalhe(lead) {
+      if (!lead.ultimaLigacao) return "";
+      var u = lead.ultimaLigacao;
+      var partes = [];
+      partes.push("Duracao: " + (u.duracaoSegundos || 0) + "s");
+      if (u.gravacao) {
+        partes.push('<a href="' + escapar(u.gravacao) + '" target="_blank" rel="noopener">Ouvir gravacao</a>');
+      }
+      return '<div class="detalhe">' + partes.join(" &middot; ") + "</div>";
+    }
+
+    function render(leads) {
+      var tbody = document.getElementById("lista");
+      var resumo = document.getElementById("resumo");
+
+      if (!leads.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="vazio">Nenhum lead recebido ainda.<br>Assim que o WaSeller disparar o webhook, os leads aparecem aqui.</td></tr>';
+        resumo.textContent = "0 leads";
+        return;
+      }
+
+      resumo.textContent = leads.length + (leads.length === 1 ? " lead" : " leads");
+
+      tbody.innerHTML = leads.map(function (lead) {
+        var status = lead.status || "novo";
+        var podeLigar = status !== "ligando";
+        var btn = '<button class="btn btn-verde" ' +
+          (podeLigar ? "" : "disabled ") +
+          'onclick="ligar(this, \'' + escapar(lead.waId) + '\')">' +
+          (status === "ligando" ? "Ligando..." : "Ligar") + "</button>";
+
+        return "<tr>" +
+          "<td><div class='nome'>" + escapar(lead.nome || "Sem nome") + "</div>" +
+            "<div class='numero'>" + escapar(lead.e164 || lead.waId) + "</div>" +
+            linhaDetalhe(lead) + "</td>" +
+          "<td><span class='badge b-" + escapar(status) + "'>" +
+            escapar(STATUS_LABEL[status] || status) + "</span></td>" +
+          "<td>" + formatarData(lead.criadoEm) + "</td>" +
+          "<td style='text-align:right;'>" + btn + "</td>" +
+        "</tr>";
+      }).join("");
+    }
+
+    function carregar() {
+      fetch("/api/leads", { cache: "no-store" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("Falha ao carregar leads (HTTP " + r.status + ")");
+          return r.json();
+        })
+        .then(function (leads) { mostrarErro(""); render(leads); })
+        .catch(function (e) { mostrarErro(e.message); });
+    }
+
+    function ligar(botao, waId) {
+      botao.disabled = true;
+      botao.textContent = "Ligando...";
+      mostrarErro("");
+      fetch("/api/ligar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ waId: waId })
+      })
+        .then(function (r) {
+          return r.json().then(function (dados) {
+            if (!r.ok) throw new Error(dados.erro || "Falha ao iniciar a ligacao.");
+            return dados;
+          });
+        })
+        .then(function () { carregar(); })
+        .catch(function (e) {
+          mostrarErro("Nao foi possivel ligar: " + e.message);
+          botao.disabled = false;
+          botao.textContent = "Ligar";
+        });
+    }
+
+    carregar();
+    setInterval(carregar, 20000);
+  </script>
+</body>
+</html>

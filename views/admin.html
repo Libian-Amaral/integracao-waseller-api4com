@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Configuracao - WaSeller / API4COM</title>
+<style>
+  :root{--verde:#1f8a5b;--verde-claro:#e7f5ee;--cinza:#6b7280;--cinza-claro:#f3f4f6;--borda:#e5e7eb;--texto:#1f2937;--azul:#2563eb;--vermelho:#b91c1c;--amarelo:#b45309;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#fafafa;color:var(--texto);padding:24px 16px 60px;line-height:1.5;}
+  .container{max-width:760px;margin:0 auto;}
+  header{margin-bottom:18px;}
+  h1{font-size:22px;margin-bottom:4px;}
+  .sub{color:var(--cinza);font-size:14px;}
+  .card{background:#fff;border:1px solid var(--borda);border-radius:10px;padding:18px 18px;margin-bottom:14px;}
+  .card h2{font-size:16px;margin-bottom:6px;}
+  .card .info{color:var(--cinza);font-size:13px;margin-bottom:12px;}
+  label{display:block;font-size:13px;color:var(--cinza);margin-bottom:4px;margin-top:8px;}
+  input[type=text],input[type=email],input[type=password]{width:100%;padding:9px 11px;border:1px solid var(--borda);border-radius:8px;font-size:14px;font-family:inherit;}
+  input:focus{outline:none;border-color:var(--azul);}
+  .btn{border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-top:12px;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-verde{background:var(--verde);color:#fff;}
+  .btn-azul{background:var(--azul);color:#fff;}
+  .btn-claro{background:var(--cinza-claro);color:var(--texto);}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;margin-left:6px;vertical-align:middle;}
+  .b-ok{background:var(--verde-claro);color:var(--verde);}
+  .b-falta{background:#fee2e2;color:var(--vermelho);}
+  .res{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:13px;display:none;white-space:pre-wrap;word-break:break-all;}
+  .res.ok{background:var(--verde-claro);color:var(--verde);display:block;}
+  .res.erro{background:#fee2e2;color:var(--vermelho);display:block;}
+  .token{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#1f2937;color:#f9fafb;padding:10px 12px;border-radius:8px;font-size:13px;word-break:break-all;margin-top:8px;}
+  .copiar{background:#374151;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;margin-top:8px;}
+  ul.status{list-style:none;font-size:13px;}
+  ul.status li{padding:4px 0;}
+  .nav{margin-top:6px;font-size:13px;}
+  .nav a{color:var(--azul);text-decoration:none;margin-right:14px;}
+  .aviso{background:#fef3c7;color:var(--amarelo);padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Configuracao da Integracao</h1>
+    <div class="sub">Use esta pagina para preparar a integracao apos o deploy. Tudo aqui acontece pelo navegador, sem precisar instalar nada.</div>
+    <div class="nav"><a href="/">&larr; Voltar ao painel de ligacoes</a></div>
+  </header>
+
+  <div class="aviso"><b>Atencao:</b> esta pagina manipula credenciais. Use somente em uma maquina/conta de confianca. A senha digitada aqui e enviada uma unica vez para a API4COM e nao e armazenada.</div>
+
+  <!-- STATUS ATUAL -->
+  <div class="card">
+    <h2>1. Status das variaveis</h2>
+    <div class="info">Confere o que ja esta configurado nas variaveis de ambiente do servico (no Render).</div>
+    <ul id="status" class="status"><li>Carregando...</li></ul>
+    <button class="btn btn-claro" onclick="carregarStatus()">Atualizar</button>
+  </div>
+
+  <!-- GERAR TOKEN API4COM -->
+  <div class="card">
+    <h2>2. Gerar token da API4COM</h2>
+    <div class="info">Digite o e-mail e a senha que voce usa para entrar na API4COM. Isto gera um <b>token permanente</b> que voce vai colar nas variaveis de ambiente do Render. A senha NAO e salva.</div>
+    <label>E-mail da API4COM</label>
+    <input type="email" id="email" placeholder="seuemail@dominio.com" />
+    <label>Senha da API4COM</label>
+    <input type="password" id="senha" placeholder="sua senha" />
+    <button class="btn btn-verde" id="btnGerar" onclick="gerarToken()">Gerar token</button>
+    <div id="resGerar" class="res"></div>
+    <div id="tokenBox" style="display:none;">
+      <div style="font-size:13px;color:var(--cinza);margin-top:10px;">Copie a linha abaixo e cole no Render como variavel <b>API4COM_TOKEN</b>:</div>
+      <div class="token" id="tokenValue"></div>
+      <button class="copiar" onclick="copiarToken()">Copiar token</button>
+    </div>
+  </div>
+
+  <!-- REGISTRAR WEBHOOK API4COM -->
+  <div class="card">
+    <h2>3. Registrar webhook na API4COM</h2>
+    <div class="info">Faz a API4COM enviar o resultado de cada ligacao para este servico. Requer <b>API4COM_TOKEN</b>, <b>PUBLIC_URL</b> e <b>WEBHOOK_SECRET</b> ja configurados.</div>
+    <button class="btn btn-azul" id="btnReg" onclick="registrarWebhook()">Registrar webhook</button>
+    <div id="resReg" class="res"></div>
+  </div>
+
+  <!-- TESTAR WASELLER -->
+  <div class="card">
+    <h2>4. Testar a API do WaSeller</h2>
+    <div class="info">Faz uma chamada simples para verificar se o <b>WASELLER_TOKEN</b> esta correto e se o WhatsApp Web esta conectado. Se aparecer erro 501, abra o WhatsApp Web e tente de novo.</div>
+    <button class="btn btn-azul" id="btnWa" onclick="testarwaseller()">Testar agora</button>
+    <div id="resWa" class="res"></div>
+  </div>
+</div>
+
+<script>
+  function escapar(t){return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  function mostrar(elId, ok, msg){var el=document.getElementById(elId);el.className="res "+(ok?"ok":"erro");el.textContent=msg;}
+
+  function carregarStatus(){
+    fetch("/admin/status",{cache:"no-store"}).then(function(r){return r.json();}).then(function(s){
+      var itens=[
+        ["PUBLIC_URL", s.PUBLIC_URL ? s.PUBLIC_URL : null],
+        ["WEBHOOK_SECRET", s.WEBHOOK_SECRET ? "configurado" : null],
+        ["PAINEL_USUARIO / SENHA", (s.PAINEL_USUARIO && s.PAINEL_SENHA) ? "configurado" : null],
+        ["API4COM_TOKEN", s.API4COM_TOKEN ? "configurado" : null],
+        ["API4COM_EXTENSION", s.API4COM_EXTENSION ? s.API4COM_EXTENSION : null],
+        ["API4COM_GATEWAY", s.API4COM_GATEWAY],
+        ["WASELLER_TOKEN", s.WASELLER_TOKEN ? "configurado" : null],
+        ["WASELLER_REGISTRAR_NOTA", s.WASELLER_REGISTRAR_NOTA ? "true" : "false"],
+      ];
+      var ul=document.getElementById("status");
+      ul.innerHTML=itens.map(function(p){
+        var nome=p[0], val=p[1];
+        var ok=val!=null && val!=="" && val!=="false";
+        return "<li><b>"+escapar(nome)+"</b>: "+(ok?escapar(String(val))+'<span class="badge b-ok">OK</span>':'<span class="badge b-falta">falta</span>')+"</li>";
+      }).join("");
+    }).catch(function(e){document.getElementById("status").innerHTML="<li style='color:#b91c1c;'>Erro ao carregar status: "+escapar(e.message)+"</li>";});
+  }
+
+  function gerarToken(){
+    var email=document.getElementById("email").value.trim();
+    var senha=document.getElementById("senha").value;
+    if(!email||!senha){mostrar("resGerar",false,"Preencha e-mail e senha.");return;}
+    document.getElementById("btnGerar").disabled=true;
+    document.getElementById("tokenBox").style.display="none";
+    mostrar("resGerar",true,"Gerando token...");
+    fetch("/admin/gerar-token-api4com",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email,password:senha})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(x){
+      if(!x.ok){mostrar("resGerar",false,"Falhou: "+(x.d.erro||"erro desconhecido"));}
+      else{
+        mostrar("resGerar",true,"Token gerado com sucesso!");
+        document.getElementById("tokenValue").textContent=x.d.token;
+        document.getElementById("tokenBox").style.display="block";
+        document.getElementById("senha").value="";
+      }
+    }).catch(function(e){mostrar("resGerar",false,"Falhou: "+e.message);}).finally(function(){document.getElementById("btnGerar").disabled=false;});
+  }
+
+  function copiarToken(){
+    var t=document.getElementById("tokenValue").textContent;
+    if(navigator.clipboard){navigator.clipboard.writeText(t).then(function(){alert("Token copiado!");});}
+    else{var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);alert("Token copiado!");}
+  }
+
+  function registrarWebhook(){
+    document.getElementById("btnReg").disabled=true;
+    mostrar("resReg",true,"Registrando...");
+    fetch("/admin/registrar-webhook-api4com",{method:"POST"}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(x){
+      if(!x.ok){mostrar("resReg",false,"Falhou: "+(x.d.erro||"erro desconhecido"));}
+      else{mostrar("resReg",true,"Webhook registrado!\nURL: "+x.d.webhookUrl);}
+    }).catch(function(e){mostrar("resReg",false,"Falhou: "+e.message);}).finally(function(){document.getElementById("btnReg").disabled=false;});
+  }
+
+  function testarwaseller(){
+    document.getElementById("btnWa").disabled=true;
+    mostrar("resWa",true,"Testando...");
+    fetch("/admin/testar-waseller",{method:"POST"}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});}).then(function(x){
+      if(!x.ok){mostrar("resWa",false,"Falhou: "+(x.d.erro||"erro desconhecido"));}
+      else{mostrar("resWa",true,"OK! API do WaSeller respondeu.\n"+JSON.stringify(x.d.resposta,null,2));}
+    }).catch(function(e){mostrar("resWa",false,"Falhou: "+e.message);}).finally(function(){document.getElementById("btnWa").disabled=false;});
+  }
+
+  carregarStatus();
+</script>
+</body>
+</html>

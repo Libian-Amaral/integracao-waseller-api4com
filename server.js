@@ -149,6 +149,26 @@ app.get('/', protegerPainel, (req, res) => {
 });
 app.get('/api/leads', protegerPainel, (req, res) => res.json(store.listarLeads()));
 
+// Marcar um lead como concluido manualmente (para desbloquear leads
+// que ficaram travados em "ligando" porque o webhook nao chegou).
+app.post('/api/marcar-concluida', protegerPainel, (req, res) => {
+  const waId = String(req.body.waId || '');
+  const atendida = !!req.body.atendida;
+  const lead = store.obterLead(waId);
+  if (!lead) return res.status(404).json({ erro: 'Lead nao encontrado.' });
+  store.atualizarLead(waId, {
+    status: atendida ? 'atendida' : 'nao_atendida',
+    ultimaLigacao: {
+      em: new Date().toISOString(),
+      duracaoSegundos: 0, atendida,
+      motivoDesligamento: 'marcado_manualmente',
+      gravacao: '',
+    },
+  });
+  log(`[manual] Lead ${lead.nome} marcado como ${atendida ? 'ATENDIDA' : 'NAO ATENDIDA'}`);
+  res.json({ ok: true });
+});
+
 // =====================================================================
 //  3) LIGAR (dispara chamada na API4COM)
 // =====================================================================
@@ -310,3 +330,81 @@ app.listen(PORT, () => {
   if (!process.env.API4COM_TOKEN) log('AVISO: API4COM_TOKEN nao configurado.');
   if (!process.env.WASELLER_TOKEN) log('AVISO: WASELLER_TOKEN nao configurado.');
 });
+
+// =====================================================================
+//  POLLING - fallback quando o webhook de fim da API4COM nao chega.
+//
+//  A cada 30s procura leads em status "ligando" e pergunta a API4COM
+//  se a chamada ja terminou. Se sim, atualiza o lead exatamente como
+//  o webhook faria (grava a nota no WaSeller e aplica etiqueta).
+// =====================================================================
+const POLLING_INTERVAL_MS = 30000;
+const POLLING_TIMEOUT_MIN = 30; // desiste depois de 30min
+
+async function verificarLeadsLigando() {
+  const agora = Date.now();
+  const leads = store.listarLeads().filter((l) =>
+    l.status === 'ligando' && l.ultimaChamadaId && l.ultimaChamadaEm
+  );
+  for (const lead of leads) {
+    // desiste depois de 30min - marca como nao_atendida por seguranca
+    const inicio = new Date(lead.ultimaChamadaEm).getTime();
+    if (agora - inicio > POLLING_TIMEOUT_MIN * 60000) {
+      store.atualizarLead(lead.waId, {
+        status: 'nao_atendida',
+        ultimaLigacao: {
+          em: new Date().toISOString(),
+          duracaoSegundos: 0, atendida: false,
+          motivoDesligamento: 'timeout_polling',
+          gravacao: '',
+        },
+      });
+      log(`[polling] Lead ${lead.nome} desistido apos ${POLLING_TIMEOUT_MIN}min`);
+      continue;
+    }
+    try {
+      const evento = await api4com.obterStatusChamada(lead.ultimaChamadaId);
+      if (evento && (evento.endedAt || evento.hangupCause || Number(evento.duration) > 0)) {
+        const atendida = Number(evento.duration) > 0;
+        store.atualizarLead(lead.waId, {
+          status: atendida ? 'atendida' : 'nao_atendida',
+          ultimaLigacao: {
+            em: evento.endedAt || new Date().toISOString(),
+            duracaoSegundos: Number(evento.duration) || 0,
+            atendida, motivoDesligamento: evento.hangupCause || '',
+            gravacao: evento.recordUrl || '',
+          },
+        });
+        log(`[polling] Lead ${lead.nome} - ${atendida ? 'ATENDIDA' : 'NAO ATENDIDA'} (${evento.duration || 0}s)`);
+        if (String(process.env.WASELLER_REGISTRAR_NOTA).toLowerCase() === 'true') {
+          const linhas = [
+            `Ligacao ${atendida ? 'atendida' : 'nao atendida'} (via API4COM)`,
+            `Data: ${formatarDataBr(evento.endedAt)}`,
+            `Duracao: ${formatarDuracao(evento.duration)}`,
+            evento.recordUrl ? `Gravacao: ${evento.recordUrl}` : null,
+          ].filter(Boolean);
+          try { await waseller.criarNota({ userID: lead.waId, text: linhas.join('\n') }); }
+          catch (e) { log('[polling] Falha ao gravar nota:', e.message); }
+        }
+      }
+    } catch (e) {
+      if (e.status === 404) {
+        store.atualizarLead(lead.waId, {
+          status: 'atendida',
+          ultimaLigacao: {
+            em: new Date().toISOString(),
+            duracaoSegundos: 0, atendida: true,
+            motivoDesligamento: 'chamada_encerrada',
+            gravacao: '',
+          },
+        });
+        log(`[polling] Lead ${lead.nome} - canal ja encerrado (404), marcado como atendida`);
+      } else {
+        log(`[polling] Erro em lead ${lead.nome}: ${e.message}`);
+      }
+    }
+  }
+}
+
+setInterval(() => { verificarLeadsLigando().catch((e) => log('[polling] erro geral:', e.message)); }, POLLING_INTERVAL_MS);
+log(`[polling] Ativo - verifica a cada ${POLLING_INTERVAL_MS / 1000}s (timeout ${POLLING_TIMEOUT_MIN}min).`);

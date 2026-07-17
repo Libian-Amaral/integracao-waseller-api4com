@@ -29,6 +29,22 @@ const api4com = require('./lib/api4com');
 const waseller = require('./lib/waseller');
 
 const app = express();
+
+// ---------------------------------------------------------------------
+//  CORS - permite que o WaSeller (roda dentro de web.whatsapp.com) mande
+//  webhooks pra nosso servidor. O browser faz um preflight OPTIONS antes
+//  do POST; se nao respondermos com os headers CORS corretos, o browser
+//  BLOQUEIA o POST e o webhook aparece como falha no painel do WaSeller.
+// ---------------------------------------------------------------------
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -263,7 +279,7 @@ app.post('/admin/registrar-webhook-api4com', protegerPainel, async (req, res) =>
     const webhookUrl = `${process.env.PUBLIC_URL.replace(/\/$/, '')}/webhook/api4com/${WEBHOOK_SECRET}`;
     const r = await api4com.registrarWebhook({ gateway: GATEWAY, webhookUrl });
     log('[admin] Webhook da API4COM registrado em', webhookUrl);
-    res.json({ ok: true, webhookUrl: webhookUrl, resposta: r });
+    res.json({ ok: true, webhookUrl, resposta: r });
   } catch (e) {
     log('[admin] Falha ao registrar webhook API4COM:', e.message);
     res.status(502).json({ erro: e.message });

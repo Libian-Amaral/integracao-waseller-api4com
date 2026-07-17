@@ -39,6 +39,9 @@
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .btn-verde { background: var(--verde); color: #fff; }
     .btn-claro { background: var(--cinza-claro); color: var(--texto); }
+    .btn-pequeno { padding: 5px 10px; font-size: 12px; margin-top: 6px; margin-left: 6px; }
+    .btn-vermelho { background: var(--vermelho); color: #fff; }
+    .btn-azul-claro { background: #e0e7ff; color: var(--azul); }
     table { width: 100%; border-collapse: collapse; background: #fff;
       border: 1px solid var(--borda); border-radius: 10px; overflow: hidden; }
     th, td { text-align: left; padding: 12px 14px; font-size: 14px;
@@ -153,6 +156,16 @@
           'onclick="ligar(this, \'' + escapar(lead.waId) + '\')">' +
           (status === "ligando" ? "Ligando..." : "Ligar") + "</button>";
 
+        // Se estiver travado em "ligando", mostra opcoes de resolver manualmente
+        var manuais = "";
+        if (status === "ligando") {
+          manuais =
+            '<div><button class="btn btn-pequeno btn-azul-claro" ' +
+              'onclick="marcarConcluida(this, \'' + escapar(lead.waId) + '\', true)">Atendida</button>' +
+            '<button class="btn btn-pequeno btn-vermelho" ' +
+              'onclick="marcarConcluida(this, \'' + escapar(lead.waId) + '\', false)">Nao atendida</button></div>';
+        }
+
         return "<tr>" +
           "<td><div class='nome'>" + escapar(lead.nome || "Sem nome") + "</div>" +
             "<div class='numero'>" + escapar(lead.e164 || lead.waId) + "</div>" +
@@ -160,7 +173,7 @@
           "<td><span class='badge b-" + escapar(status) + "'>" +
             escapar(STATUS_LABEL[status] || status) + "</span></td>" +
           "<td>" + formatarData(lead.criadoEm) + "</td>" +
-          "<td style='text-align:right;'>" + btn + "</td>" +
+          "<td style='text-align:right;'>" + btn + manuais + "</td>" +
         "</tr>";
       }).join("");
     }
@@ -195,6 +208,27 @@
           mostrarErro("Nao foi possivel ligar: " + e.message);
           botao.disabled = false;
           botao.textContent = "Ligar";
+        });
+    }
+
+    function marcarConcluida(botao, waId, atendida) {
+      botao.disabled = true;
+      mostrarErro("");
+      fetch("/api/marcar-concluida", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ waId: waId, atendida: !!atendida })
+      })
+        .then(function (r) {
+          return r.json().then(function (dados) {
+            if (!r.ok) throw new Error(dados.erro || "Falha ao marcar concluida.");
+            return dados;
+          });
+        })
+        .then(function () { carregar(); })
+        .catch(function (e) {
+          mostrarErro(e.message);
+          botao.disabled = false;
         });
     }
 
